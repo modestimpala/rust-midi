@@ -29,10 +29,11 @@
             </TabItem>
         </TabControl>
         <TextBlock HorizontalAlignment="Left" Margin="416,173,0,0" Text="Currently Playing:" TextWrapping="Wrap" VerticalAlignment="Top" Height="17" Width="109"/>
-        <TextBlock x:Name="currentlyPlayingTextBlock" HorizontalAlignment="Left" Margin="453,190,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Height="81" Width="165"/>
+        <TextBlock x:Name="currentlyPlayingTextBlock" HorizontalAlignment="Left" Margin="458,193,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Height="69" Width="163"/>
         <Button x:Name="addCurrentlyPlayingToFavoritesButton"  ToolTip="Save currently playing song to favorites list" FontFamily="Segoe UI Symbol" Content="&#xE105;" HorizontalAlignment="Left" Margin="426,195,0,0" VerticalAlignment="Top" Width="22" Click="saveButton_Click" Height="21"/>
         <Button x:Name="deleteFavoritesButton" ToolTip="Wipe all favorites" FontFamily="Segoe UI Symbol" Content="&#xE107;" HorizontalAlignment="Left" Margin="106,34,0,0" VerticalAlignment="Top" Click="deleteFavoritesButton_Click"/>
-        <ProgressBar x:Name="songProgressBar" HorizontalAlignment="Left" Height="23" Margin="421,67,0,0" VerticalAlignment="Top" Width="123"/>
+        <ProgressBar x:Name="songProgressBar" HorizontalAlignment="Left" Height="23" Margin="421,67,0,0" VerticalAlignment="Top" Width="123" IsEnabled="False"/>
+        <Label x:Name="addedLabel" Content="Added!" HorizontalAlignment="Left" Margin="416,210,0,0" VerticalAlignment="Top" Width="107" FontWeight="Bold" FontSize="10" Visibility="Hidden"/>
 
     </Grid>
 </Window>

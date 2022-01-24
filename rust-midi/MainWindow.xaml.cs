@@ -24,6 +24,7 @@ using System.Configuration;
 using System.ComponentModel;
 using System.Windows;
 using MessageBox = System.Windows.MessageBox;
+using System.Windows.Threading;
 
 namespace rust_midi
 {
@@ -50,14 +51,14 @@ namespace rust_midi
             //set up context menus
             favoritesContextMenu = new ContextMenu();
             var item = new System.Windows.Controls.MenuItem();
-            item.Click += deleteFavoriteClick;
+            item.Click += DeleteFavoriteClick;
             item.Header = "Delete";
             favoritesContextMenu.Items.Add(item);
             favoritesList.ContextMenu = favoritesContextMenu;
 
             listContextMenu = new ContextMenu();
             var item2 = new System.Windows.Controls.MenuItem();
-            item2.Click += addFavoriteClick;
+            item2.Click += AddFavoriteClick;
             item2.Header = "Add";
             listContextMenu.Items.Add(item2);
             listBox.ContextMenu = listContextMenu;
@@ -66,7 +67,7 @@ namespace rust_midi
             try
             {
                 //register global hotkeys
-                GlobalHotKey.RegisterHotKey(globalHotkey1, () => playRandomMidi());
+                GlobalHotKey.RegisterHotKey(globalHotkey1, () => PlayRandomMidi());
                 GlobalHotKey.RegisterHotKey(globalHotkey2, () => StopPlayback());
 
                 //settings time!
@@ -82,7 +83,7 @@ namespace rust_midi
                 }
                 if (IsValidPath(midiDir))
                 {
-                    populateFiles(midiDir);
+                    PopulateFiles(midiDir);
                 }
                 PopulateFavorites();
             } catch (Exception e)
@@ -92,7 +93,7 @@ namespace rust_midi
             }
         }
 
-        private void deleteFavoriteClick(object sender, RoutedEventArgs e)
+        private void DeleteFavoriteClick(object sender, RoutedEventArgs e)
         {
             if(favoritesList.SelectedItem != null)
             {
@@ -100,14 +101,16 @@ namespace rust_midi
             }
         }
 
-        private void addFavoriteClick(object sender, RoutedEventArgs e)
+        private void AddFavoriteClick(object sender, RoutedEventArgs e)
         {
-            if (favoritesList.SelectedItem != null)
+            if (listBox.SelectedItem != null)
             {
-                WriteFavorites(favoritesList.SelectedItem.ToString());
+                WriteFavorites(listBox.SelectedItem.ToString());
+                MessageBox.Show("added " + listBox.SelectedItem.ToString());
             }
         }
-        static string GetFullPathFromFavorites(string cleanFileName)
+
+        private static string GetFullPathFromFavorites(string cleanFileName)
         {
             var favoriteString = ReadFavorites();
             if (favoriteString.Contains(@"|"))
@@ -138,6 +141,10 @@ namespace rust_midi
         {
             favoritesList.Items.Clear();
             var favoriteString = ReadFavorites();
+            if(String.IsNullOrEmpty(favoriteString))
+            {
+                return;
+            }
             if (favoriteString.Contains(@"|"))
             {
                 string[] favorites = favoriteString.Split(@"|");
@@ -145,7 +152,8 @@ namespace rust_midi
                 {
                     favoritesList.Items.Add(GetCleanFilename(file));
                 }
-            } else
+            }
+            else
             {
                 favoritesList.Items.Add(GetCleanFilename(favoriteString));
             }
@@ -263,13 +271,13 @@ namespace rust_midi
                 directory.Text = dialog.FileName;
                 midiDir = dialog.FileName;
                 WriteSettings("dir", dialog.FileName);
-                populateFiles(dialog.FileName);
+                PopulateFiles(dialog.FileName);
             }
 
         }
         string pathEdit;
         string cleanFile;
-        private void populateFiles(string dir)
+        private void PopulateFiles(string dir)
         {
             try
             {
@@ -300,12 +308,12 @@ namespace rust_midi
             }
         }
 
-        private void playRandomMidi()
+        private void PlayRandomMidi()
         {
             if (playButton.IsEnabled)
             {
                 string file1 = getRandomMidi(midiDir);
-                playMidi(file1);
+                PlayMidi(file1);
             } 
 
         }
@@ -333,7 +341,7 @@ namespace rust_midi
             stopButton.IsEnabled = false;
         }
 
-        private async void playMidi(string file)
+        private async void PlayMidi(string file)
         {
             var _device = OutputDevice.GetByName(deviceName);
             stopButton.IsEnabled = true;
@@ -348,7 +356,7 @@ namespace rust_midi
             currentlyPlaying = file;
             //var tempoMap = midi.GetTempoMap();
             TempoMap tempoMap = midi.GetTempoMap();
-
+            //TODO make timer more acurate (i think the time being sent is wrong)
             TimeSpan midiFileDuration = midi.GetTimedEvents().LastOrDefault(e => e.Event is NoteOffEvent)?.TimeAs<MetricTimeSpan>(tempoMap) ?? new MetricTimeSpan();
             ProgressBarRun(midiFileDuration);
             //
@@ -357,26 +365,37 @@ namespace rust_midi
             await Task.Run(() =>
             {
                 _playback.Start();
+                isPlaying = true;
                 SpinWait.SpinUntil(() => !_playback.IsRunning);
+                isPlaying = false;
                 _device.Dispose();
                 _playback.Dispose();
             });
             playButton.IsEnabled = true;
+            stopButton.IsEnabled = false;
         }
 
-        System.Windows.Forms.Timer myTimer = new System.Windows.Forms.Timer();
+        
         private void ProgressBarRun(TimeSpan time)
         {
-            
-        }
-
-        public void IncreaseBar()
-        {
-            songProgressBar.Value++;
-        }
-        private static void TimerEventProcessor(Object myObject, EventArgs myEventArgs)
-        {
-            
+            DispatcherTimer t = new DispatcherTimer();
+            TimeSpan tempTime = new TimeSpan(0);
+            songProgressBar.Maximum = time.TotalSeconds;
+            songProgressBar.Value = 0;
+            songProgressBar.IsEnabled = true;
+            t.Interval = new TimeSpan(0, 0, 1);
+            t.Tick += (EventHandler)delegate (object snd, EventArgs ea)
+            {
+                if(tempTime.TotalSeconds >= (time.TotalSeconds) || !isPlaying) {
+                    // Get rid of the timer.
+                    songProgressBar.Value = 0;
+                    songProgressBar.IsEnabled = false;
+                    ((DispatcherTimer)snd).Stop();
+                }
+                songProgressBar.Value++;
+                
+            };
+            t.Start();
         }
 
         private void playButton_Click(object sender, RoutedEventArgs e)
@@ -388,7 +407,7 @@ namespace rust_midi
                 //get random file
                 string file1 = getRandomMidi(midiDir);
                 // play 
-                playMidi(file1);
+                PlayMidi(file1);
 
             }
             else if (fileTabs.SelectedIndex == 0 && listBox.SelectedItem != null)
@@ -397,7 +416,7 @@ namespace rust_midi
 
                 string file2 = listBox.SelectedItem.ToString();
                 file2 = midiDir + "\\" + file2; //add our path to the cleanfilename from list
-                playMidi(file2);
+                PlayMidi(file2);
 
 
             }
@@ -406,7 +425,7 @@ namespace rust_midi
                 //play favorites file
                 var file2 = favoritesList.SelectedItem.ToString();
                 var fullPath = GetFullPathFromFavorites(file2);
-                playMidi(fullPath);
+                PlayMidi(fullPath);
             }
             else
             {
@@ -433,11 +452,8 @@ namespace rust_midi
             }
             var _device = OutputDevice.GetByName(deviceName);
             _device.Dispose();
+            songProgressBar.Value = 0;
             stopButton.IsEnabled = false;
-        }
-        private void pauseButton_Click(object sender, RoutedEventArgs e)
-        {
-
         }
 
         private void saveButton_Click(object sender, RoutedEventArgs e)
@@ -446,9 +462,20 @@ namespace rust_midi
             {
                 WriteFavorites(currentlyPlaying);
                 PopulateFavorites();
-                MessageBox.Show("Added " + currentlyPlaying);
+                addedLabel.Visibility = Visibility.Visible;
+                DispatcherTimer t = new DispatcherTimer();
+                t.Interval = new TimeSpan(0, 0, 2);
+                t.Tick += (EventHandler)delegate (object snd, EventArgs ea)
+                {
+                    addedLabel.Visibility = Visibility.Hidden; 
+                    // Get rid of the timer.
+                    ((DispatcherTimer)snd).Stop();
+                };
+                t.Start();
+                //MessageBox.Show("Added " + currentlyPlaying);
             }
         }
+
 
         private void deleteFavoritesButton_Click(object sender, RoutedEventArgs e)
         {
@@ -497,10 +524,17 @@ namespace rust_midi
 
         private string GetCleanFilename(string path)
         {
-            if (path != " " || path != "" || path != null)
+            if (!String.IsNullOrEmpty(path))
             {
-                string justPath = Directory.GetParent(path).FullName;
-                return path.Replace(justPath + "\\", "");
+                try
+                {
+                    string justPath = Directory.GetParent(path).FullName;
+                    return path.Replace(justPath + "\\", "");
+                } catch (Exception e)
+                {
+                    MessageBox.Show(e.Message);
+                    throw;
+                }
             } else
             {
                 return "";
