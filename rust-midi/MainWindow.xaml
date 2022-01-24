@@ -1,0 +1,38 @@
+﻿<Window x:Class="rust_midi.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:rust_midi"
+        mc:Ignorable="d"
+        Title="Rust Midi Player" Height="450" Width="649" ResizeMode="CanMinimize">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition/>
+        </Grid.ColumnDefinitions>
+        <Button x:Name="stopButton" ToolTip="Stop" FontFamily="Segoe UI Symbol" Content="&#xE15B;" HorizontalAlignment="Left" Margin="575,67,0,0" VerticalAlignment="Top" Click="stopButton_Click" Height="23" Width="22" IsEnabled="False"/>
+        <Button x:Name="playButton" ToolTip="Play" FontFamily="Segoe UI Symbol" Content="&#xE102;" HorizontalAlignment="Left" Margin="549,67,0,0" VerticalAlignment="Top" Click="playButton_Click" Height="23" Width="21"/>
+
+        <TextBox x:Name="directory" Margin="10,8,238,0" TextWrapping="Wrap" VerticalAlignment="Top" Text="C:\" TextChanged="directory_TextChanged" Height="20"/>
+        <Button x:Name="browseButton" Content="Browse" HorizontalAlignment="Left" Margin="416,8,0,0" VerticalAlignment="Top" Click="browseButton_Click"/>
+        <CheckBox x:Name="randomCheckbox" Content="Random File" HorizontalAlignment="Left" Margin="421,96,0,0" VerticalAlignment="Top" Checked="randomCheckbox_Checked"/>
+        <TabControl x:Name="fileTabs" Margin="10,33,238,0" SelectedIndex="2">
+            <TabItem x:Name="listTab" Header="List" IsSelected="True">
+                <Grid Background="#FFE5E5E5">
+                    <ListBox x:Name="listBox" Margin="0,0,0,5"/>
+                </Grid>
+            </TabItem>
+            <TabItem x:Name="favoritesTab" Header="Favorites" Margin="-2,-2,-4,0">
+                <Grid Background="#FFE5E5E5">
+                    <ListBox x:Name="favoritesList" Margin="0,0,0,5"/>
+                </Grid>
+            </TabItem>
+        </TabControl>
+        <TextBlock HorizontalAlignment="Left" Margin="416,173,0,0" Text="Currently Playing:" TextWrapping="Wrap" VerticalAlignment="Top" Height="17" Width="109"/>
+        <TextBlock x:Name="currentlyPlayingTextBlock" HorizontalAlignment="Left" Margin="453,190,0,0" TextWrapping="Wrap" VerticalAlignment="Top" Height="81" Width="165"/>
+        <Button x:Name="addCurrentlyPlayingToFavoritesButton"  ToolTip="Save currently playing song to favorites list" FontFamily="Segoe UI Symbol" Content="&#xE105;" HorizontalAlignment="Left" Margin="426,195,0,0" VerticalAlignment="Top" Width="22" Click="saveButton_Click" Height="21"/>
+        <Button x:Name="deleteFavoritesButton" ToolTip="Wipe all favorites" FontFamily="Segoe UI Symbol" Content="&#xE107;" HorizontalAlignment="Left" Margin="106,34,0,0" VerticalAlignment="Top" Click="deleteFavoritesButton_Click"/>
+        <ProgressBar x:Name="songProgressBar" HorizontalAlignment="Left" Height="23" Margin="421,67,0,0" VerticalAlignment="Top" Width="123"/>
+
+    </Grid>
+</Window>
