@@ -1,63 +1,55 @@
-﻿using Microsoft.Win32;
-using System;
-using System.Collections.Generic;
+﻿using System;
+using System.Configuration;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
+using System.Windows.Forms;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using Microsoft.WindowsAPICodePack.Dialogs;
-using System.Text.RegularExpressions;
-using Melanchall.DryWetMidi.Common;
+using System.Windows.Threading;
 using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Interaction;
 using Melanchall.DryWetMidi.Multimedia;
-using System.Threading;
-using System.Configuration;
-using System.ComponentModel;
-using System.Windows;
+using Microsoft.WindowsAPICodePack.Dialogs;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 using MessageBox = System.Windows.MessageBox;
-using System.Windows.Threading;
 
 namespace rust_midi
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    ///     Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class MainWindow : Window 
+    public partial class MainWindow
     {
-        bool getRandomFile = false;
-        bool isPlaying = false;
-        string midiDir = @"";
         private static Playback _playback;
-        private static string deviceName = "rust";
-        string globalHotkey1 = "F6";
-        string globalHotkey2 = "F3";
-        public string currentlyPlaying;
+        private const string DeviceName = "rust";
+        private OutputDevice _device;
+        private string _currentlyPlaying;
 
-        private ContextMenu favoritesContextMenu;
-        private ContextMenu listContextMenu;
+        private const string GlobalHotkey1 = "F6";
+        private const string GlobalHotkey2 = "F3";
+        
+        private bool _isPlaying;
+        private string _midiDir;
+
+        private bool _getRandomFile;
+        private bool _includeSubfolders;
+        private static SearchOption _searchOption = SearchOption.TopDirectoryOnly;
+
         public MainWindow()
         {
             InitializeComponent();
 
             //set up context menus
-            favoritesContextMenu = new ContextMenu();
-            var item = new System.Windows.Controls.MenuItem();
+            var favoritesContextMenu = new ContextMenu();
+            var item = new MenuItem();
             item.Click += DeleteFavoriteClick;
             item.Header = "Delete";
             favoritesContextMenu.Items.Add(item);
             favoritesList.ContextMenu = favoritesContextMenu;
 
-            listContextMenu = new ContextMenu();
-            var item2 = new System.Windows.Controls.MenuItem();
+            var listContextMenu = new ContextMenu();
+            var item2 = new MenuItem();
             item2.Click += AddFavoriteClick;
             item2.Header = "Add";
             listContextMenu.Items.Add(item2);
@@ -67,38 +59,35 @@ namespace rust_midi
             try
             {
                 //register global hotkeys
-                GlobalHotKey.RegisterHotKey(globalHotkey1, () => PlayRandomMidi());
-                GlobalHotKey.RegisterHotKey(globalHotkey2, () => StopPlayback());
+                GlobalHotKey.RegisterHotKey(GlobalHotkey1, () => PlayRandomMidi());
+                GlobalHotKey.RegisterHotKey(GlobalHotkey2, () => StopPlayback());
 
                 //settings time!
                 var dirSetting = ReadSetting("dir");
                 if (dirSetting != "Not found") //init dir
                 {
-                    midiDir = dirSetting;
-                    directory.Text = midiDir;
-                } else
-                {
-                    midiDir = @"C:\";
-                    directory.Text = midiDir;
+                    _midiDir = dirSetting;
+                    directory.Text = _midiDir;
                 }
-                if (IsValidPath(midiDir))
+                else
                 {
-                    PopulateFiles(midiDir);
+                    _midiDir = @"C:\";
+                    directory.Text = _midiDir;
                 }
+
+                if (IsValidPath(_midiDir)) PopulateFiles(_midiDir);
                 PopulateFavorites();
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
                 MessageBox.Show(e.Message);
-                throw e;
+                throw;
             }
         }
 
         private void DeleteFavoriteClick(object sender, RoutedEventArgs e)
         {
-            if(favoritesList.SelectedItem != null)
-            {
-                DeleteFavorite(favoritesList.SelectedItem.ToString());
-            }
+            if (favoritesList.SelectedItem != null) DeleteFavorite(favoritesList.SelectedItem.ToString());
         }
 
         private void AddFavoriteClick(object sender, RoutedEventArgs e)
@@ -106,52 +95,19 @@ namespace rust_midi
             if (listBox.SelectedItem != null)
             {
                 WriteFavorites(listBox.SelectedItem.ToString());
-                MessageBox.Show("added " + listBox.SelectedItem.ToString());
+                MessageBox.Show("added " + listBox.SelectedItem);
             }
         }
 
-        private static string GetFullPathFromFavorites(string cleanFileName)
-        {
-            var favoriteString = ReadFavorites();
-            if (favoriteString.Contains(@"|"))
-            {
-                string[] favorites = favoriteString.Split(@"|");
-                var result = Array.Find(favorites, element => element.Contains(cleanFileName));
-                if (result != null)
-                {
-                    return result;
-                } else
-                {
-                    return null;
-                }
-                
-            }
-            else
-            {
-                if(favoriteString.Contains(cleanFileName))
-                {
-                    return favoriteString;
-                } else
-                {
-                    return null;
-                }
-            }
-        }
         public void PopulateFavorites()
         {
             favoritesList.Items.Clear();
             var favoriteString = ReadFavorites();
-            if(String.IsNullOrEmpty(favoriteString))
-            {
-                return;
-            }
+            if (string.IsNullOrEmpty(favoriteString)) return;
             if (favoriteString.Contains(@"|"))
             {
-                string[] favorites = favoriteString.Split(@"|");
-                foreach (string file in favorites)
-                {
-                    favoritesList.Items.Add(GetCleanFilename(file));
-                }
+                var favorites = favoriteString.Split(@"|");
+                foreach (var file in favorites) favoritesList.Items.Add(GetCleanFilename(file));
             }
             else
             {
@@ -159,31 +115,14 @@ namespace rust_midi
             }
         }
 
-        static string ReadSetting(string key)
-        {
-            try
-            {
-                var appSettings = ConfigurationManager.AppSettings;
-                string result = appSettings[key] ?? "Not found";
-                return result;
-            } catch (ConfigurationErrorsException)
-            {
-                MessageBox.Show("Erorr reading settings");
-                return null;
-            }
-        }
         public void WriteFavorites(string path)
         {
             var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
             var settings = configFile.AppSettings.Settings;
             if (settings["favorites"] == null)
-            {
                 settings.Add("favorites", path);
-            }
             else
-            {
-                settings["favorites"].Value += @"|" + path; 
-            }
+                settings["favorites"].Value += @"|" + path;
             configFile.Save(ConfigurationSaveMode.Modified);
             ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
             PopulateFavorites();
@@ -194,16 +133,11 @@ namespace rust_midi
             var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
             var settings = configFile.AppSettings.Settings;
             if (settings["favorites"] == null)
-            {
                 return;
-            }
-            else if(settings["favorites"].Value.Contains(@"|"))
-            {
+            if (settings["favorites"].Value.Contains(@"|"))
                 settings["favorites"].Value = settings["favorites"].Value.Replace(@"|" + fav, "");
-            } else
-            {
+            else
                 settings["favorites"].Value = "";
-            }
             configFile.Save(ConfigurationSaveMode.Modified);
             ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
             PopulateFavorites();
@@ -214,97 +148,97 @@ namespace rust_midi
             var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
             var settings = configFile.AppSettings.Settings;
             if (settings["favorites"] == null)
-            {
                 return;
-            } else
-            {
-                settings["favorites"].Value = "";
-            }
+            settings["favorites"].Value = "";
             configFile.Save(ConfigurationSaveMode.Modified);
             ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
             PopulateFavorites();
         }
 
-        static string ReadFavorites()
+        private static string ReadFavorites()
         {
             var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
             var settings = configFile.AppSettings.Settings;
             if (settings["favorites"] == null)
-            {
                 return "";
-            } else
+            return settings["favorites"].Value;
+        }
+        
+        private static string GetFullPathFromFavorites(string cleanFileName)
+        {
+            var favoriteString = ReadFavorites();
+            if (favoriteString.Contains(@"|"))
             {
-                return settings["favorites"].Value;
+                var favorites = favoriteString.Split(@"|");
+                var result = Array.Find(favorites, element => element.Contains(cleanFileName));
+                if (result != null)
+                    return result;
+                return null;
             }
+
+            if (favoriteString.Contains(cleanFileName))
+                return favoriteString;
+            return null;
         }
 
-        static void WriteSettings(string key, string value)
+        private static void WriteSettings(string key, string value)
         {
             try
             {
                 var configFile = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
                 var settings = configFile.AppSettings.Settings;
-                if(settings[key] == null)
-                {
+                if (settings[key] == null)
                     settings.Add(key, value);
-                } else
-                {
+                else
                     settings[key].Value = value;
-                }
                 configFile.Save(ConfigurationSaveMode.Modified);
                 ConfigurationManager.RefreshSection(configFile.AppSettings.SectionInformation.Name);
-            } catch (ConfigurationErrorsException)
+            }
+            catch (ConfigurationErrorsException)
             {
                 MessageBox.Show("Error writting app settings");
             }
         }
-
-        private void browseButton_Click(object sender, RoutedEventArgs e)
+        
+        private static string ReadSetting(string key)
         {
-            var fileContent = string.Empty;
-            var filePath = string.Empty;
-            CommonOpenFileDialog dialog = new CommonOpenFileDialog();
-            dialog.InitialDirectory = "C:\\Users";
-            dialog.IsFolderPicker = true;
-            if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
+            try
             {
-                directory.Text = dialog.FileName;
-                midiDir = dialog.FileName;
-                WriteSettings("dir", dialog.FileName);
-                PopulateFiles(dialog.FileName);
+                var appSettings = ConfigurationManager.AppSettings;
+                var result = appSettings[key] ?? "Not found";
+                return result;
             }
-
+            catch (ConfigurationErrorsException)
+            {
+                MessageBox.Show("Error reading settings");
+                return null;
+            }
         }
-        string pathEdit;
-        string cleanFile;
+
         private void PopulateFiles(string dir)
         {
             try
             {
                 listBox.Items.Clear();
-                string[] files = Directory.GetFiles(dir);
-                foreach (string fileName in files)
-                {
+                _searchOption = SearchOption.TopDirectoryOnly;
+                if(_includeSubfolders) _searchOption = SearchOption.AllDirectories;
+                var files = Directory.GetFiles(dir, ".", _searchOption);
+                foreach (var fileName in files)
                     //pathEdit = Directory.GetParent(fileName).FullName;
                     //cleanFile = fileName.Replace(pathEdit, " ");
                     listBox.Items.Add(GetCleanFilename(fileName));
-                    
-                }
-            } catch (Exception e)
+            }
+            catch (Exception e)
             {
                 MessageBox.Show(e.Message);
             }
         }
 
-
         private void randomCheckbox_Checked(object sender, RoutedEventArgs e)
         {
-            if((bool)randomCheckbox.IsChecked)
+            if (randomCheckbox.IsChecked != null)
             {
-                getRandomFile = true;
-            } else
-            {
-                getRandomFile = false;
+                _getRandomFile = (bool)randomCheckbox.IsChecked;
             }
         }
 
@@ -312,10 +246,9 @@ namespace rust_midi
         {
             if (playButton.IsEnabled)
             {
-                string file1 = getRandomMidi(midiDir);
+                var file1 = GetRandomMidi(_midiDir);
                 PlayMidi(file1);
-            } 
-
+            }
         }
 
         private void StopPlayback()
@@ -328,97 +261,128 @@ namespace rust_midi
 
                 try
                 {
-                    _playback.Dispose();
+                    if (_playback != null)
+                    {
+                        if (_playback.IsRunning) _playback.Stop();
+
+                        //_playback.Dispose();
+
+                        if (_device != null) _device.Dispose();
+                    }
                 }
-                catch (AccessViolationException _e)
+                catch (AccessViolationException e)
                 {
+                    MessageBox.Show(e.Message);
                     throw;
                 }
-
             }
-            //var _device = OutputDevice.GetByName(deviceName);
-            //_device.Dispose();
+
             stopButton.IsEnabled = false;
         }
 
-        private async void PlayMidi(string file)
+        private void PlayMidi(string file)
         {
-            var _device = OutputDevice.GetByName(deviceName);
-            stopButton.IsEnabled = true;
-            //var midi = MidiFile.Read(file);
-            var midi = MidiFile.Read(file, new ReadingSettings
+            try
             {
-                NotEnoughBytesPolicy = NotEnoughBytesPolicy.Ignore,
-            });
-            _playback = midi.GetPlayback(_device);
-            playButton.IsEnabled = false;
-            currentlyPlayingTextBlock.Text = GetCleanFilename(file);
-            currentlyPlaying = file;
-            //var tempoMap = midi.GetTempoMap();
-            TempoMap tempoMap = midi.GetTempoMap();
-            //TODO make timer more acurate (i think the time being sent is wrong)
-            TimeSpan midiFileDuration = midi.GetTimedEvents().LastOrDefault(e => e.Event is NoteOffEvent)?.TimeAs<MetricTimeSpan>(tempoMap) ?? new MetricTimeSpan();
-            ProgressBarRun(midiFileDuration);
-            //
-            //MessageBox.Show(midiFileDuration.ToString());
+                _device = OutputDevice.GetByName(DeviceName);
+                if (_device != null)
+                {
+                    stopButton.IsEnabled = true;
+                    playButton.IsEnabled = false;
 
-            await Task.Run(() =>
+                    //var midi = MidiFile.Read(file);
+                    var midi = MidiFile.Read(file, new ReadingSettings
+                    {
+                        NotEnoughBytesPolicy = NotEnoughBytesPolicy.Ignore
+                    });
+                    _playback = midi.GetPlayback(_device);
+
+                    _playback.Stopped += FinishedHandler;
+                    _playback.Finished += FinishedHandler;
+
+                    currentlyPlayingTextBlock.Text = GetCleanFilename(file);
+                    _currentlyPlaying = file;
+                    //var tempoMap = midi.GetTempoMap();
+                    var tempoMap = midi.GetTempoMap();
+                    //TODO make timer more acurate (i think the time being sent is wrong)
+                    TimeSpan midiFileDuration =
+                        midi.GetTimedEvents().LastOrDefault(e => e.Event is NoteOffEvent)
+                            ?.TimeAs<MetricTimeSpan>(tempoMap) ?? new MetricTimeSpan();
+                    ProgressBarRun(midiFileDuration);
+                    //
+                    //MessageBox.Show(midiFileDuration.ToString());
+
+
+                    _playback.Start();
+                    _isPlaying = true;
+                }
+            }
+            catch (Exception e)
             {
-                _playback.Start();
-                isPlaying = true;
-                SpinWait.SpinUntil(() => !_playback.IsRunning);
-                isPlaying = false;
-                _device.Dispose();
-                _playback.Dispose();
-            });
+                MessageBox.Show(e.Message);
+            }
+        }
+
+        private void FinishedHandler(object sender, EventArgs e)
+        {
             playButton.IsEnabled = true;
             stopButton.IsEnabled = false;
+            _isPlaying = false;
         }
 
-        
         private void ProgressBarRun(TimeSpan time)
         {
-            DispatcherTimer t = new DispatcherTimer();
-            TimeSpan tempTime = new TimeSpan(0);
+            var t = new DispatcherTimer();
+            var tempTime = new TimeSpan(0);
             songProgressBar.Maximum = time.TotalSeconds;
             songProgressBar.Value = 0;
             songProgressBar.IsEnabled = true;
             t.Interval = new TimeSpan(0, 0, 1);
-            t.Tick += (EventHandler)delegate (object snd, EventArgs ea)
+            t.Tick += delegate(object snd, EventArgs ea)
             {
-                if(tempTime.TotalSeconds >= (time.TotalSeconds) || !isPlaying) {
+                if (tempTime.TotalSeconds >= time.TotalSeconds || !_isPlaying)
+                {
                     // Get rid of the timer.
                     songProgressBar.Value = 0;
                     songProgressBar.IsEnabled = false;
                     ((DispatcherTimer)snd).Stop();
                 }
+
                 songProgressBar.Value++;
-                
             };
             t.Start();
+        }
+        
+        private void browseButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new CommonOpenFileDialog();
+            dialog.InitialDirectory = "C:\\Users";
+            dialog.IsFolderPicker = true;
+            if (dialog.ShowDialog() == CommonFileDialogResult.Ok)
+            {
+                directory.Text = dialog.FileName;
+                _midiDir = dialog.FileName;
+                WriteSettings("dir", dialog.FileName);
+                PopulateFiles(dialog.FileName);
+            }
         }
 
         private void playButton_Click(object sender, RoutedEventArgs e)
         {
-
-            var _device = OutputDevice.GetByName(deviceName);
-            if ((bool)randomCheckbox.IsChecked)
+            if (_getRandomFile)
             {
                 //get random file
-                string file1 = getRandomMidi(midiDir);
+                var file1 = GetRandomMidi(_midiDir);
                 // play 
                 PlayMidi(file1);
-
             }
             else if (fileTabs.SelectedIndex == 0 && listBox.SelectedItem != null)
             {
                 //play list file
 
-                string file2 = listBox.SelectedItem.ToString();
-                file2 = midiDir + "\\" + file2; //add our path to the cleanfilename from list
+                var file2 = listBox.SelectedItem.ToString();
+                file2 = _midiDir + "\\" + file2; //add our path to the cleanfilename from list
                 PlayMidi(file2);
-
-
             }
             else if (fileTabs.SelectedIndex == 1 && favoritesList.SelectedItem != null)
             {
@@ -430,44 +394,47 @@ namespace rust_midi
             else
             {
                 MessageBox.Show("Please select a file or check Play Random");
-
             }
         }
+
         private void stopButton_Click(object sender, RoutedEventArgs e)
         {
             if (_playback != null)
             {
                 _playback.InterruptNotesOnStop = true;
-
                 //_playback.Stop();
                 try
                 {
-                    _playback.Dispose();
+                    if (_playback.IsRunning) _playback.Stop();
+                    //_playback.Dispose();
+
+                    if (_device != null) _device.Dispose();
                 }
-                catch (AccessViolationException _e)
+                catch (AccessViolationException exception)
                 {
+                    MessageBox.Show(exception.Message);
                     throw;
                 }
-
             }
-            var _device = OutputDevice.GetByName(deviceName);
-            _device.Dispose();
+
+            //var _device = OutputDevice.GetByName(deviceName);
+            //_device.Dispose();
             songProgressBar.Value = 0;
             stopButton.IsEnabled = false;
         }
 
         private void saveButton_Click(object sender, RoutedEventArgs e)
         {
-            if (currentlyPlaying != null)
+            if (_currentlyPlaying != null)
             {
-                WriteFavorites(currentlyPlaying);
+                WriteFavorites(_currentlyPlaying);
                 PopulateFavorites();
                 addedLabel.Visibility = Visibility.Visible;
-                DispatcherTimer t = new DispatcherTimer();
+                var t = new DispatcherTimer();
                 t.Interval = new TimeSpan(0, 0, 2);
-                t.Tick += (EventHandler)delegate (object snd, EventArgs ea)
+                t.Tick += delegate(object snd, EventArgs ea)
                 {
-                    addedLabel.Visibility = Visibility.Hidden; 
+                    addedLabel.Visibility = Visibility.Hidden;
                     // Get rid of the timer.
                     ((DispatcherTimer)snd).Stop();
                 };
@@ -476,10 +443,10 @@ namespace rust_midi
             }
         }
 
-
         private void deleteFavoritesButton_Click(object sender, RoutedEventArgs e)
         {
-            System.Windows.Forms.DialogResult dialog = (System.Windows.Forms.DialogResult)MessageBox.Show("Are you sure?", "Confirm", MessageBoxButton.YesNo);
+            var dialog = (DialogResult)MessageBox.Show("Are you sure?", 
+                "Confirm", MessageBoxButton.YesNo);
             if (dialog == System.Windows.Forms.DialogResult.Yes)
             {
                 ClearFavorites();
@@ -487,35 +454,31 @@ namespace rust_midi
             }
         }
 
-        static string getRandomMidi(string dir)
+        private static string GetRandomMidi(string dir)
         {
             var rand = new Random();
-            var files = Directory.GetFiles(dir, "*.mid");
+            var files = Directory.GetFiles(dir, "*.mid", _searchOption);
             return files[rand.Next(files.Length)];
         }
 
-       
-
         private bool IsValidPath(string path, bool allowRelativePaths = false)
         {
-            bool isValid = true;
-
+            bool isValid;
             try
             {
-                string fullPath = System.IO.Path.GetFullPath(path);
-
                 if (allowRelativePaths)
                 {
-                    isValid = System.IO.Path.IsPathRooted(path);
+                    isValid = Path.IsPathRooted(path);
                 }
                 else
                 {
-                    string root = System.IO.Path.GetPathRoot(path);
-                    isValid = string.IsNullOrEmpty(root.Trim(new char[] { '\\', '/' })) == false;
+                    var root = Path.GetPathRoot(path);
+                    isValid = string.IsNullOrEmpty(root?.Trim('\\', '/')) == false;
                 }
             }
             catch (Exception ex)
             {
+                MessageBox.Show(ex.Message);
                 isValid = false;
             }
 
@@ -524,42 +487,50 @@ namespace rust_midi
 
         private string GetCleanFilename(string path)
         {
-            if (!String.IsNullOrEmpty(path))
-            {
+            if (!string.IsNullOrEmpty(path))
                 try
                 {
-                    string justPath = Directory.GetParent(path).FullName;
+                    var justPath = Directory.GetParent(path).FullName;
                     return path.Replace(justPath + "\\", "");
-                } catch (Exception e)
+                }
+                catch (Exception e)
                 {
                     MessageBox.Show(e.Message);
                     throw;
                 }
-            } else
-            {
-                return "";
-            }
+
+            return "";
         }
 
         private void directory_TextChanged(object sender, TextChangedEventArgs e)
         {
-            
         }
 
         private void directory_KeyDown(object sender, KeyEventArgs e)
         {
-            if(e.Key == Key.Enter)
+            if (e.Key == Key.Enter)
             {
                 if (IsValidPath(directory.Text))
                 {
-                    midiDir = directory.Text;
+                    _midiDir = directory.Text;
                     WriteSettings("dir", directory.Text);
-                } else
+                }
+                else
                 {
                     MessageBox.Show("invalid  path");
                 }
             }
         }
 
+        private void subfolderCheckbox_Changed(object sender, RoutedEventArgs e)
+        {
+            if (subfolderCheckbox.IsChecked != null)
+            {
+                _includeSubfolders = (bool)subfolderCheckbox.IsChecked;
+
+                _searchOption = _includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+                WriteSettings("subfolders", _includeSubfolders.ToString());
+            }
+        }
     }
 }
