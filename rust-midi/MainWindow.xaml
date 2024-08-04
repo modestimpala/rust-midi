@@ -6,6 +6,16 @@
         mc:Ignorable="d"
         Title="Rust Midi Player" Height="450" Width="649" ResizeMode="CanMinimize">
     <Grid>
+        <TextBlock HorizontalAlignment="Left" Margin="258,385,0,0" Text="Sort by:" TextWrapping="Wrap"
+                   VerticalAlignment="Top" Height="17" Width="45" />
+        <ComboBox x:Name="sortComboBox" HorizontalAlignment="Left" Margin="308,383,0,0" VerticalAlignment="Top" Width="120"
+                  SelectionChanged="sortComboBox_SelectionChanged">
+            <ComboBoxItem Content="Name"/>
+            <ComboBoxItem Content="Date Modified"/>
+            <ComboBoxItem Content="Date Created"/>
+            <ComboBoxItem Content="File Size"/>
+        </ComboBox>
+        
         <Button x:Name="stopButton" ToolTip="Stop" FontFamily="Segoe UI Symbol" Content="&#xE15B;"
                 HorizontalAlignment="Left" Margin="575,67,0,0" VerticalAlignment="Top" Click="stopButton_Click"
                 Height="23" Width="22" IsEnabled="False" />
@@ -22,18 +32,24 @@
         <CheckBox x:Name="subfolderCheckbox" Content="Include Subfolders" HorizontalAlignment="Left" Margin="470,10,0,0"
                   VerticalAlignment="Top" Checked="subfolderCheckbox_Changed" Unchecked="subfolderCheckbox_Changed" />
         
-        <TabControl x:Name="fileTabs" Margin="10,33,238,0" SelectedIndex="2">
+        <TextBlock HorizontalAlignment="Left" Margin="10,385,0,0" Text="Filter:" TextWrapping="Wrap"
+                   VerticalAlignment="Top" Height="17" Width="37" />
+        <TextBox x:Name="filterTextBox" HorizontalAlignment="Left" Margin="47,385,0,0" TextWrapping="Wrap"
+                 VerticalAlignment="Top" Width="201" TextChanged="filterTextBox_TextChanged" />
+        
+        <TabControl x:Name="fileTabs" Margin="10,33,238,40" SelectedIndex="2">
             <TabItem x:Name="listTab" Header="List" IsSelected="True">
                 <Grid Background="#FFE5E5E5">
-                    <ListBox x:Name="listBox" Margin="0,0,0,5" />
+                    <ListBox x:Name="listBox" Margin="0,0,0,5" MouseDoubleClick="ListBox_MouseDoubleClick" />
                 </Grid>
             </TabItem>
             <TabItem x:Name="favoritesTab" Header="Favorites" Margin="-2,-2,-4,0">
                 <Grid Background="#FFE5E5E5">
-                    <ListBox x:Name="favoritesList" Margin="0,0,0,5" />
+                    <ListBox x:Name="favoritesList" Margin="0,0,0,5" MouseDoubleClick="FavoritesList_MouseDoubleClick" />
                 </Grid>
             </TabItem>
         </TabControl>
+        
         <TextBlock HorizontalAlignment="Left" Margin="416,173,0,0" Text="Currently Playing:" TextWrapping="Wrap"
                    VerticalAlignment="Top" Height="17" Width="109" />
         <TextBlock x:Name="currentlyPlayingTextBlock" HorizontalAlignment="Left" Margin="458,193,0,0"

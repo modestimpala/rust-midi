@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
 using System.Linq;
@@ -35,11 +36,14 @@ namespace rust_midi
         private bool _getRandomFile;
         private bool _includeSubfolders;
         private static SearchOption _searchOption = SearchOption.TopDirectoryOnly;
+            
+        private List<FileInfo> _currentFiles;
 
         public MainWindow()
         {
             InitializeComponent();
 
+            _currentFiles = new List<FileInfo>();
             //set up context menus
             var favoritesContextMenu = new ContextMenu();
             var item = new MenuItem();
@@ -51,9 +55,12 @@ namespace rust_midi
             var listContextMenu = new ContextMenu();
             var item2 = new MenuItem();
             item2.Click += AddFavoriteClick;
-            item2.Header = "Add";
+            item2.Header = "Favorite";
             listContextMenu.Items.Add(item2);
             listBox.ContextMenu = listContextMenu;
+            
+            listBox.MouseDoubleClick += ListBox_MouseDoubleClick;
+            favoritesList.MouseDoubleClick += FavoritesList_MouseDoubleClick;
 
             //todo: better error handling
             try
@@ -220,18 +227,45 @@ namespace rust_midi
             try
             {
                 listBox.Items.Clear();
-                _searchOption = SearchOption.TopDirectoryOnly;
-                if(_includeSubfolders) _searchOption = SearchOption.AllDirectories;
-                var files = Directory.GetFiles(dir, ".", _searchOption);
-                foreach (var fileName in files)
-                    //pathEdit = Directory.GetParent(fileName).FullName;
-                    //cleanFile = fileName.Replace(pathEdit, " ");
-                    listBox.Items.Add(GetCleanFilename(fileName));
+                _searchOption = _includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+                var files = Directory.GetFiles(dir, "*.mid", _searchOption);
+                _currentFiles = files.Select(f => new FileInfo(f)).ToList();
+                SortFiles();
             }
             catch (Exception e)
             {
                 MessageBox.Show(e.Message);
             }
+        }
+
+        private void SortFiles()
+        {
+            switch (sortComboBox.SelectedIndex)
+            {
+                case 0: // Name
+                    _currentFiles = _currentFiles.OrderBy(f => f.Name).ToList();
+                    break;
+                case 1: // Date Modified
+                    _currentFiles = _currentFiles.OrderByDescending(f => f.LastWriteTime).ToList();
+                    break;
+                case 2: // Date Created
+                    _currentFiles = _currentFiles.OrderByDescending(f => f.CreationTime).ToList();
+                    break;
+                case 3: // File Size
+                    _currentFiles = _currentFiles.OrderByDescending(f => f.Length).ToList();
+                    break;
+            }
+
+            listBox.Items.Clear();
+            foreach (var file in _currentFiles)
+            {
+                listBox.Items.Add(GetCleanFilename(file.FullName));
+            }
+        }
+
+        private void sortComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            SortFiles();
         }
 
         private void randomCheckbox_Checked(object sender, RoutedEventArgs e)
@@ -279,6 +313,39 @@ namespace rust_midi
 
             stopButton.IsEnabled = false;
         }
+        
+        private void ListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (listBox.SelectedItem != null)
+            {
+                var selectedFileName = listBox.SelectedItem.ToString();
+                var selectedFile = _currentFiles.FirstOrDefault(f => f.Name == selectedFileName || f.FullName.EndsWith(selectedFileName));
+        
+                if (selectedFile != null)
+                {
+                    StopPlayback();
+                    PlayMidi(selectedFile.FullName);
+                }
+                else
+                {
+                    MessageBox.Show("Selected file not found.");
+                }
+            }
+        }
+
+        private void FavoritesList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (favoritesList.SelectedItem != null)
+            {
+                var file = favoritesList.SelectedItem.ToString();
+                var fullPath = GetFullPathFromFavorites(file);
+                if (fullPath != null)
+                {
+                    StopPlayback();
+                    PlayMidi(fullPath);
+                }
+            }
+        }
 
         private void PlayMidi(string file)
         {
@@ -305,9 +372,8 @@ namespace rust_midi
                     //var tempoMap = midi.GetTempoMap();
                     var tempoMap = midi.GetTempoMap();
                     //TODO make timer more acurate (i think the time being sent is wrong)
-                    TimeSpan midiFileDuration =
-                        midi.GetTimedEvents().LastOrDefault(e => e.Event is NoteOffEvent)
-                            ?.TimeAs<MetricTimeSpan>(tempoMap) ?? new MetricTimeSpan();
+                    TimeSpan midiFileDuration = midi.GetTimedEvents().LastOrDefault(e => e.Event is NoteOffEvent)?.TimeAs<MetricTimeSpan>(tempoMap) ?? new MetricTimeSpan();
+                    //var midiFileDuration = midi.GetDuration<MetricTimeSpan>();
                     ProgressBarRun(midiFileDuration);
                     //
                     //MessageBox.Show(midiFileDuration.ToString());
@@ -325,9 +391,17 @@ namespace rust_midi
 
         private void FinishedHandler(object sender, EventArgs e)
         {
-            playButton.IsEnabled = true;
-            stopButton.IsEnabled = false;
-            _isPlaying = false;
+            // Use the Dispatcher to update UI elements
+            Dispatcher.Invoke(() =>
+            {
+                playButton.IsEnabled = true;
+                stopButton.IsEnabled = false;
+                _isPlaying = false;
+                
+                // If you have any other UI updates, include them here
+                songProgressBar.Value = 0;
+                songProgressBar.IsEnabled = false;
+            });
         }
 
         private void ProgressBarRun(TimeSpan time)
@@ -371,22 +445,29 @@ namespace rust_midi
         {
             if (_getRandomFile)
             {
-                //get random file
+                // Get random file
                 var file1 = GetRandomMidi(_midiDir);
-                // play 
+                // Play 
                 PlayMidi(file1);
             }
             else if (fileTabs.SelectedIndex == 0 && listBox.SelectedItem != null)
             {
-                //play list file
-
-                var file2 = listBox.SelectedItem.ToString();
-                file2 = _midiDir + "\\" + file2; //add our path to the cleanfilename from list
-                PlayMidi(file2);
+                // Play list file
+                var selectedFileName = listBox.SelectedItem.ToString();
+                var selectedFile = _currentFiles.FirstOrDefault(f => f.Name == selectedFileName || f.FullName.EndsWith(selectedFileName));
+        
+                if (selectedFile != null)
+                {
+                    PlayMidi(selectedFile.FullName);
+                }
+                else
+                {
+                    MessageBox.Show("Selected file not found.");
+                }
             }
             else if (fileTabs.SelectedIndex == 1 && favoritesList.SelectedItem != null)
             {
-                //play favorites file
+                // Play favorites file
                 var file2 = favoritesList.SelectedItem.ToString();
                 var fullPath = GetFullPathFromFavorites(file2);
                 PlayMidi(fullPath);
@@ -530,6 +611,22 @@ namespace rust_midi
 
                 _searchOption = _includeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
                 WriteSettings("subfolders", _includeSubfolders.ToString());
+                PopulateFiles(_midiDir);
+            }
+        }
+
+        private void filterTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(filterTextBox.Text))
+            {
+                PopulateFiles(_midiDir);
+            }
+            else
+            {
+                _currentFiles = Directory.GetFiles(_midiDir, filterTextBox.Text + "*.mid", _searchOption)
+                    .Select(f => new FileInfo(f))
+                    .ToList();
+                SortFiles();
             }
         }
     }
